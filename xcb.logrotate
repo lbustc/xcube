@@ -1,0 +1,14 @@
+/var/log/xcb/xcb-*.log {
+	rotate 7
+	daily
+	notifempty
+	compress
+	delaycompress
+	missingok
+	create 640 root root
+	sharedscripts
+	postrotate
+		kill -HUP `pgrep -f xcb` >/dev/null 2>&1
+	endscript
+}
+

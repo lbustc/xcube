@@ -1,0 +1,4 @@
+tcpdump udp and dst port <port>
+
+valgrind --tool=memcheck -v --log-file=<your_program.log> --leak-check=full --show-reachable=yes --track-origins=yes <your_program> <your_program.conf>
+

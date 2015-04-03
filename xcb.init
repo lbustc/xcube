@@ -1,0 +1,80 @@
+#!/bin/sh
+#
+# __XCB__    Starts, Stops and Reloads __XCB__.
+#
+# chkconfig: 2345 90 60
+# description: __XCB__ daemon.
+#
+
+PROC_NAME=__XCB__
+DAEMON=/usr/sbin/$PROC_NAME
+XCB_CONFIG=/etc/xcb
+
+# Source function library.
+. /etc/rc.d/init.d/functions
+
+if ! [ -x $DAEMON ] ; then
+	echo "ERROR: $DAEMON not found"
+	exit 0
+fi
+
+if ! [ -d $XCB_CONFIG ] ; then
+	echo "ERROR: $XCB_CONFIG directory not found"
+	exit 0
+fi
+
+RETVAL=0
+
+start() {
+	# Check if $PROC_NAME is already running.
+	if [ "`pgrep -fl $DAEMON | cut -d\  -f2`" = "$DAEMON" ] ; then
+		echo "$PROC_NAME is already running."
+		exit 1
+	fi
+	# Start daemon.
+	echo -n $"Starting $PROC_NAME: "
+	echo "67108864" >/proc/sys/net/core/rmem_max
+	echo "67108864" >/proc/sys/net/core/rmem_default
+	echo "67108864" >/proc/sys/net/core/wmem_max
+	echo "67108864" >/proc/sys/net/core/wmem_default
+	echo "8388608	16777216	67108864" >/proc/sys/net/ipv4/tcp_wmem
+	daemon chrt -f 98 $DAEMON $XCB_CONFIG/$PROC_NAME.conf
+	RETVAL=$?
+	echo
+	return $RETVAL
+}
+
+stop() {
+	# Stop daemon.
+	echo -n $"Shutting down $PROC_NAME: "
+	killproc `basename $DAEMON`
+	RETVAL=$?
+	echo
+	return $RETVAL
+}
+
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+  start)
+	start
+	;;
+  stop)
+	stop
+	;;
+  restart)
+	restart
+	;;
+  status)
+	status $PROC_NAME
+	;;
+  *)
+	echo "Usage: $PROC_NAME {start|stop|restart|status}"
+	exit 1
+esac
+
+exit $?
+

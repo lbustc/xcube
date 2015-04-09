@@ -337,8 +337,8 @@ int process_events(event_loop el, int flags) {
 			te = heap_pop(el->tevent);
 			/* FIXME */
 			if ((ret = te->tproc(el, te->id, te->data)) != EVENT_NOMORE) {
-					add_ms_to_now(ret, &te->sec, &te->ms);
-					heap_push(el->tevent, te);
+				add_ms_to_now(ret, &te->sec, &te->ms);
+				heap_push(el->tevent, te);
 			} else {
 				if (te->f)
 					te->f(el, te->data);

@@ -102,10 +102,10 @@ static void logger_print(struct logmsg *logmsg) {
 static void free_logmsg(struct logmsg *logmsg) {
 	/* FIXME */
 	if (logmsg) {
-		FREE(logmsg->date);
-		FREE(logmsg->file);
-		FREE(logmsg->function);
 		FREE(logmsg->message);
+		FREE(logmsg->function);
+		FREE(logmsg->file);
+		FREE(logmsg->date);
 		FREE(logmsg);
 	}
 }

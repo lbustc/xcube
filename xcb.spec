@@ -33,7 +33,7 @@ Development files for XCUBE.
 %setup -q
 
 %build
-%configure --disable-static CFLAGS="-g -O2 -pipe -fno-builtin-memcmp" CXXFLAGS="-g -O2"
+%configure --disable-static CFLAGS="-march=corei7 -g -O2 -pipe -fno-builtin-memcmp" CXXFLAGS="-march=corei7 -g -O2"
 make %{?_smp_mflags}
 pushd misc
 make
@@ -80,7 +80,6 @@ rm -rf %{buildroot}
 
 %files devel
 %defattr(-,root,root,-)
-%exclude %{_includedir}/%{name}/xcb-client.h
 %{_includedir}/%{name}/*
 %{_datadir}/%{name}/*
 

@@ -49,21 +49,21 @@ typedef struct file_event *file_event;
 typedef struct time_event *time_event;
 typedef struct event_loop *event_loop;
 typedef void file_proc(event_loop el, int fd, int mask, void *data);
-typedef int  time_proc(event_loop el, long long id, void *data);
+typedef int  time_proc(event_loop el, unsigned long id, void *data);
 typedef void finalizer(event_loop el, void *data);
 
 /* FIXME: exported functions */
-extern event_loop create_event_loop(int size);
-extern event_loop create_event_loop_safe(int size);
-extern void       delete_event_loop(event_loop el);
-extern int        create_file_event(event_loop el, int fd, int mask, file_proc *proc, void *data);
-extern void       delete_file_event(event_loop el, int fd, int mask);
-extern long long  create_time_event(event_loop el, long long ms,
+extern event_loop    create_event_loop(int size);
+extern event_loop    create_event_loop_safe(int size);
+extern void          delete_event_loop(event_loop el);
+extern int           create_file_event(event_loop el, int fd, int mask, file_proc *proc, void *data);
+extern void          delete_file_event(event_loop el, int fd, int mask);
+extern unsigned long create_time_event(event_loop el, long long ms,
 			time_proc *proc, finalizer *f, void *data);
-extern int        delete_time_event(event_loop el, long long id);
-extern int        process_events(event_loop el, int flags);
-extern void       start_event_loop(event_loop el, int flags);
-extern void       stop_event_loop(event_loop el);
+extern int           delete_time_event(event_loop el, unsigned long id);
+extern int           process_events(event_loop el, int flags);
+extern void          start_event_loop(event_loop el, int flags);
+extern void          stop_event_loop(event_loop el);
 
 #endif /* EVENT_INCLUDED */
 

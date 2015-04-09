@@ -43,7 +43,7 @@ struct ohlc {
 	char			*contract;
 	float			prehigh, prelow, open, high, low, close;
 	int			prevolume, preopenint, volume, openint;
-	long long		id;
+	unsigned long		id;
 	pthread_spinlock_t	lock;
 };
 
@@ -81,7 +81,7 @@ static inline void load_config(void) {
 	}
 }
 
-static int kline_output(event_loop el, long long id, void *data) {
+static int kline_output(event_loop el, unsigned long id, void *data) {
 	struct ohlc *ohlc = (struct ohlc *)data;
 	time_t t;
 	struct tm lt;

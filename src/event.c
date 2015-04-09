@@ -36,6 +36,7 @@
 #include <time.h>
 #include <sys/time.h>
 #include "mem.h"
+#include "heap.h"
 #include "event.h"
 
 struct file_event {
@@ -48,9 +49,8 @@ typedef struct fired_event {
 	int		mask;
 } *fired_event;
 struct time_event {
-	time_event	next;
 	/* time event identifier */
-	long long	id;
+	unsigned long	id;
 	long		sec, ms;
 	time_proc	*tproc;
 	finalizer	*f;
@@ -59,14 +59,12 @@ struct time_event {
 struct event_loop {
 	int		size;
 	int		maxfd;
-	long long	nextid;
 	time_t		lasttime;
 	int		stop;
 	int		safe;
 	file_event	fevents;
 	fired_event	fireds;
-	time_event	tevent;
-	pthread_mutex_t	tlock;
+	heap_t		tevent;
 	void		*apidata;
 };
 
@@ -76,6 +74,21 @@ struct event_loop {
 #else
 #include "event_select.c"
 #endif
+
+/* FIXME */
+static int tecmp(const void *x, const void *y) {
+	time_event a = (time_event)x, b = (time_event)y;
+
+	if (a->sec > b->sec)
+		return -1;
+	if (a->sec < b->sec)
+		return 1;
+	if (a->ms > b->ms)
+		return -1;
+	if (a->ms < b->ms)
+		return 1;
+	return 0;
+}
 
 static void add_ms_to_now(long long msecs, long *sec, long *ms) {
 	struct timeval tv;
@@ -94,19 +107,13 @@ static void add_ms_to_now(long long msecs, long *sec, long *ms) {
 
 /* FIXME */
 static time_event search_nearest_timer(event_loop el) {
-	time_event te, nearest = NULL;
+	time_event nearest = NULL;
 
 	if (el->safe)
-		pthread_mutex_lock(&el->tlock);
-	te = el->tevent;
-	while (te) {
-		if (nearest == NULL || te->sec < nearest->sec ||
-			(te->sec == nearest->sec && te->ms < nearest->ms))
-			nearest = te;
-		te = te->next;
-	}
+		heap_lock(el->tevent);
+	nearest = heap_peek(el->tevent, 1);
 	if (el->safe)
-		pthread_mutex_unlock(&el->tlock);
+		heap_unlock(el->tevent);
 	return nearest;
 }
 
@@ -118,7 +125,6 @@ event_loop create_event_loop(int size) {
 		return NULL;
 	el->size     = size;
 	el->maxfd    = -1;
-	el->nextid   = 0;
 	el->lasttime = time(NULL);
 	el->stop     = 0;
 	el->safe     = 0;
@@ -126,7 +132,8 @@ event_loop create_event_loop(int size) {
 		goto err;
 	if ((el->fireds = ALLOC(size * sizeof (struct fired_event))) == NULL)
 		goto err;
-	el->tevent   = NULL;
+	if ((el->tevent = heap_new(8, offsetof(struct time_event, id), tecmp)) == NULL)
+		goto err;
 	if (api_create(el) == -1)
 		goto err;
 	for (i = 0; i < size; ++i)
@@ -137,6 +144,7 @@ err:
 	if (el) {
 		FREE(el->fevents);
 		FREE(el->fireds);
+		heap_free(&el->tevent);
 		FREE(el);
 	}
 	return NULL;
@@ -145,15 +153,8 @@ err:
 event_loop create_event_loop_safe(int size) {
 	event_loop el = create_event_loop(size);
 
-	if (el) {
-		pthread_mutexattr_t attr;
-
+	if (el)
 		el->safe = 1;
-		pthread_mutexattr_init(&attr);
-		pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_ADAPTIVE_NP);
-		pthread_mutex_init(&el->tlock, &attr);
-		pthread_mutexattr_destroy(&attr);
-	}
 	return el;
 }
 
@@ -161,8 +162,7 @@ event_loop create_event_loop_safe(int size) {
 void delete_event_loop(event_loop el) {
 	if (el) {
 		api_free(el);
-		if (el->safe)
-			pthread_mutex_destroy(&el->tlock);
+		heap_free(&el->tevent);
 		FREE(el->fireds);
 		FREE(el->fevents);
 		FREE(el);
@@ -216,55 +216,47 @@ void delete_file_event(event_loop el, int fd, int mask) {
 	api_del_event(el, fd, mask);
 }
 
-long long create_time_event(event_loop el, long long ms, time_proc *proc, finalizer *f, void *data) {
+unsigned long create_time_event(event_loop el, long long ms, time_proc *proc, finalizer *f, void *data) {
 	time_event te;
-	long long id;
 
 	if (el == NULL)
 		return -1;
-	id = el->nextid++;
 	if (NEW(te) == NULL)
 		return -1;
-	te->id    = id;
 	add_ms_to_now(ms, &te->sec, &te->ms);
 	te->tproc = proc;
 	te->f     = f;
 	te->data  = data;
 	if (el->safe)
-		pthread_mutex_lock(&el->tlock);
-	te->next  = el->tevent;
-	el->tevent = te;
+		heap_lock(el->tevent);
+	if (heap_push(el->tevent, te) == -1) {
+		FREE(te);
+		if (el->safe)
+			heap_unlock(el->tevent);
+		return -1;
+	}
 	if (el->safe)
-		pthread_mutex_unlock(&el->tlock);
-	return id;
+		heap_unlock(el->tevent);
+	return te->id;
 }
 
-int delete_time_event(event_loop el, long long id) {
-	time_event te, prev = NULL;
+int delete_time_event(event_loop el, unsigned long id) {
+	time_event te;
 
 	if (el == NULL)
 		return -1;
 	if (el->safe)
-		pthread_mutex_lock(&el->tlock);
-	te = el->tevent;
-	while (te) {
-		if (te->id == id) {
-			if (prev == NULL)
-				el->tevent = te->next;
-			else
-				prev->next = te->next;
-			if (te->f)
-				te->f(el, te->data);
-			FREE(te);
-			if (el->safe)
-				pthread_mutex_unlock(&el->tlock);
-			return 0;
-		}
-		prev = te;
-		te = te->next;
+		heap_lock(el->tevent);
+	if ((te = heap_remove(el->tevent, heap_peek(el->tevent, id)))) {
+		if (te->f)
+			te->f(el, te->data);
+		FREE(te);
+		if (el->safe)
+			heap_unlock(el->tevent);
+		return 0;
 	}
 	if (el->safe)
-		pthread_mutex_unlock(&el->tlock);
+		heap_unlock(el->tevent);
 	return -1;
 }
 
@@ -319,58 +311,43 @@ int process_events(event_loop el, int flags) {
 	}
 	if (flags & TIME_EVENTS) {
 		time_t now = time(NULL);
-		time_event te, prev = NULL;
-		long long maxid;
+		time_event te;
 
 		/* FIXME */
 		if (now < el->lasttime) {
+			unsigned long size, i;
+
 			if (el->safe)
-				pthread_mutex_lock(&el->tlock);
-			te = el->tevent;
-			while (te) {
+				heap_lock(el->tevent);
+			size = heap_length(el->tevent);
+			for (i = 1; i <= size && (te = heap_peek(el->tevent, i)); ++i)
 				te->sec = 0;
-				te = te->next;
-			}
 			if (el->safe)
-				pthread_mutex_unlock(&el->tlock);
+				heap_unlock(el->tevent);
 		}
 		el->lasttime = now;
 		if (el->safe)
-			pthread_mutex_lock(&el->tlock);
-		te = el->tevent;
-		maxid = el->nextid - 1;
-		while (te) {
-			if (te->id > maxid) {
-				prev = te;
-				te = te->next;
-				continue;
-			}
-			gettimeofday(&tv, NULL);
-			if (tv.tv_sec > te->sec || (tv.tv_sec == te->sec && tv.tv_usec / 1000 > te->ms)) {
-				int ret;
+			heap_lock(el->tevent);
+		while ((te = heap_peek(el->tevent, 1))) {
+			int ret;
 
-				/* FIXME */
-				if ((ret = te->tproc(el, te->id, te->data)) != EVENT_NOMORE)
+			gettimeofday(&tv, NULL);
+			if (tv.tv_sec < te->sec || (tv.tv_sec == te->sec && tv.tv_usec / 1000 < te->ms))
+				break;
+			te = heap_pop(el->tevent);
+			/* FIXME */
+			if ((ret = te->tproc(el, te->id, te->data)) != EVENT_NOMORE) {
 					add_ms_to_now(ret, &te->sec, &te->ms);
-				else {
-					if (prev == NULL)
-						el->tevent = te->next;
-					else
-						prev->next = te->next;
-					if (te->f)
-						te->f(el, te->data);
-					FREE(te);
-				}
-				++processed;
-				prev = NULL;
-				te = el->tevent;
+					heap_push(el->tevent, te);
 			} else {
-				prev = te;
-				te = te->next;
+				if (te->f)
+					te->f(el, te->data);
+				FREE(te);
 			}
+			++processed;
 		}
 		if (el->safe)
-			pthread_mutex_unlock(&el->tlock);
+			heap_unlock(el->tevent);
 	}
 	return processed;
 }

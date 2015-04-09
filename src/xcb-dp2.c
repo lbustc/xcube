@@ -221,7 +221,7 @@ static int prepare_for_shutdown(void) {
 	return 0;
 }
 
-static int server_cron(event_loop el, long long id, void *data) {
+static int server_cron(event_loop el, unsigned long id, void *data) {
 	dlist_iter_t iter;
 	dlist_node_t node;
 	NOT_USED(el);

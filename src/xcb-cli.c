@@ -357,7 +357,7 @@ int main(int argc, char **argv) {
 				cmd = dstr_cat(cmd, argv[i]);
 			}
 			cmd = dstr_cat(cmd, "\r\n");
-			net_try_write(tcpsock, cmd, dstr_length(cmd), 20, NET_NONBLOCK);
+			net_try_write(tcpsock, cmd, dstr_length(cmd), 100, NET_NONBLOCK);
 			/* dstr_free(cmd); */
 			rfd[0].fd     = proceed_pipe[0];
 			rfd[0].events = POLLIN;
@@ -391,8 +391,8 @@ int main(int argc, char **argv) {
 				if (tcpsock == -1)
 					execute_line(line);
 				else {
-					net_try_write(tcpsock, line, strlen(line), 20, NET_NONBLOCK);
-					net_try_write(tcpsock, "\r\n", 2, 20, NET_NONBLOCK);
+					net_try_write(tcpsock, line, strlen(line), 100, NET_NONBLOCK);
+					net_try_write(tcpsock, "\r\n", 2, 100, NET_NONBLOCK);
 					if (!strncasecmp(line, "quit", 4))
 						com_quit(NULL);
 				}

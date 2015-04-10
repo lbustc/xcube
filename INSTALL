@@ -1,3 +1,5 @@
 
-TODO
+CentOS 6.x
+GCC 4.8.2 (http://people.centos.org/tru/devtools-2/)
+./configure; make; make install
 

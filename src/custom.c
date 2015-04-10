@@ -136,13 +136,15 @@ void s_command(client c) {
 				}
 				res = dstr_cat(res, "\r\n");
 				pthread_spin_lock(&c->lock);
-				if (net_try_write(c->fd, res, dstr_length(res), 10, NET_NONBLOCK) == -1) {
-					xcb_log(XCB_LOG_WARNING, "Writing to client '%p': %s",
-						c, strerror(errno));
-					if (++c->eagcount >= 2)
-						client_free_async(c);
-				} else if (c->eagcount)
-					c->eagcount = 0;
+				if (!(c->flags & CLIENT_CLOSE_ASAP)) {
+					if (net_try_write(c->fd, res, dstr_length(res), 10, NET_NONBLOCK) == -1) {
+						xcb_log(XCB_LOG_WARNING, "Writing to client '%p': %s",
+							c, strerror(errno));
+						if (++c->eagcount >= 10)
+							client_free_async(c);
+					} else if (c->eagcount)
+						c->eagcount = 0;
+				}
 				pthread_spin_unlock(&c->lock);
 				dstr_free(contracts);
 				dstr_free(res);
@@ -265,7 +267,7 @@ static void *q_thread(void *data) {
 		res = dstr_new(crss->rid);
 		res = dstr_cat(res, ",1\r\n\r\n");
 		pthread_spin_lock(&crss->c->lock);
-		if (net_try_write(crss->c->fd, res, dstr_length(res), 20, NET_NONBLOCK) == -1)
+		if (net_try_write(crss->c->fd, res, dstr_length(res), 100, NET_NONBLOCK) == -1)
 			xcb_log(XCB_LOG_WARNING, "Writing to client '%p': %s", crss->c, strerror(errno));
 		pthread_spin_unlock(&crss->c->lock);
 		goto end;
@@ -283,7 +285,7 @@ static void *q_thread(void *data) {
 			res = dstr_cat_len(res, value, vlen);
 			res = dstr_cat(res, "\r\n");
 			pthread_spin_lock(&crss->c->lock);
-			if (net_try_write(crss->c->fd, res, dstr_length(res), 20, NET_NONBLOCK) == -1) {
+			if (net_try_write(crss->c->fd, res, dstr_length(res), 100, NET_NONBLOCK) == -1) {
 				xcb_log(XCB_LOG_WARNING, "Writing to client '%p': %s",
 					crss->c, strerror(errno));
 				pthread_spin_unlock(&crss->c->lock);
@@ -300,7 +302,7 @@ static void *q_thread(void *data) {
 	res = dstr_new(crss->rid);
 	res = dstr_cat(res, ",1\r\n\r\n");
 	pthread_spin_lock(&crss->c->lock);
-	if (net_try_write(crss->c->fd, res, dstr_length(res), 20, NET_NONBLOCK) == -1)
+	if (net_try_write(crss->c->fd, res, dstr_length(res), 100, NET_NONBLOCK) == -1)
 		xcb_log(XCB_LOG_WARNING, "Writing to client '%p': %s", crss->c, strerror(errno));
 	pthread_spin_unlock(&crss->c->lock);
 
